@@ -359,13 +359,7 @@ function buildListCard(items) {
   return {
     type: "stack",
     direction: "column",
-    gap: 4,
-    padding: 10,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 22,
-    shadowColor: "#ABB3C733",
-    shadowRadius: 10,
-    shadowOffset: { x: 0, y: 4 },
+    gap: 10,
     children: items.map((item) => buildCompactRow(item)),
   };
 }
@@ -376,20 +370,25 @@ function buildCompactRow(item) {
       type: "stack",
       direction: "row",
       alignItems: "center",
-      gap: 8,
-      padding: [3, 0, 3, 0],
+      gap: 12,
+      padding: 14,
+      backgroundColor: "#FFFFFF",
+      borderRadius: 20,
+      shadowColor: "#ABB3C733",
+      shadowRadius: 10,
+      shadowOffset: { x: 0, y: 4 },
       children: [
         buildMiniPercent("ERR", "#D04545"),
         {
           type: "stack",
           direction: "column",
-          gap: 1,
+          gap: 4,
           flex: 1,
           children: [
             {
               type: "text",
               text: item.name,
-              font: { size: 12, weight: "semibold" },
+              font: { size: 14, weight: "semibold" },
               textColor: "#151821",
               maxLines: 1,
               minScale: 0.65,
@@ -397,9 +396,9 @@ function buildCompactRow(item) {
             {
               type: "text",
               text: item.errorText,
-              font: { size: 9, weight: "medium" },
+              font: { size: 11, weight: "medium" },
               textColor: "#D04545",
-              maxLines: 1,
+              maxLines: 2,
               minScale: 0.7,
             },
           ],
@@ -416,26 +415,31 @@ function buildCompactRow(item) {
     type: "stack",
     direction: "row",
     alignItems: "center",
-    gap: 8,
-    padding: [3, 0, 3, 0],
+    gap: 12,
+    padding: 14,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    shadowColor: "#ABB3C733",
+    shadowRadius: 10,
+    shadowOffset: { x: 0, y: 4 },
     children: [
       buildMiniPercent(item.percentText, gaugeColor(item.ratio)),
       {
         type: "stack",
         direction: "column",
-        gap: 2,
+        gap: 6,
         flex: 1,
         children: [
           {
             type: "stack",
             direction: "row",
             alignItems: "center",
-            gap: 6,
+            gap: 8,
             children: [
               {
                 type: "text",
                 text: item.name,
-                font: { size: 12, weight: "semibold" },
+                font: { size: 14, weight: "semibold" },
                 textColor: "#151821",
                 maxLines: 1,
                 minScale: 0.6,
@@ -448,7 +452,7 @@ function buildCompactRow(item) {
           {
             type: "text",
             text: `${item.usedText} / ${item.totalText}${meta.length ? `  ·  ${meta.join("  ·  ")}` : ""}`,
-            font: { size: 9, weight: "medium" },
+            font: { size: 11, weight: "medium" },
             textColor: "#6E7588",
             maxLines: 1,
             minScale: 0.55,
@@ -491,17 +495,24 @@ function buildMiniPercent(percentText, color) {
     type: "stack",
     direction: "column",
     alignItems: "center",
-    gap: 1,
-    width: 68,
-    padding: [6, 6, 6, 6],
+    gap: 2,
+    width: 88,
+    padding: [10, 8, 10, 8],
     backgroundColor: "#F2F5FB",
-    borderRadius: 14,
+    borderRadius: 16,
     children: [
       {
         type: "text",
         text: percentText,
-        font: { size: 10, weight: "bold" },
+        font: { size: 16, weight: "bold" },
         textColor: color,
+        maxLines: 1,
+      },
+      {
+        type: "text",
+        text: "USED",
+        font: { size: 9, weight: "semibold" },
+        textColor: "#98A0B3",
         maxLines: 1,
       },
     ],
@@ -511,14 +522,14 @@ function buildMiniPercent(percentText, color) {
 function buildMetaPill(text, color) {
   return {
     type: "stack",
-    padding: [2, 7, 2, 7],
+    padding: [4, 8, 4, 8],
     backgroundColor: "#F2F5FB",
     borderRadius: 999,
     children: [
       {
         type: "text",
         text,
-        font: { size: 9, weight: "bold" },
+        font: { size: 10, weight: "bold" },
         textColor: color,
         maxLines: 1,
       },
@@ -533,14 +544,14 @@ function buildCompactProgressBar(ratio) {
   return {
     type: "stack",
     direction: "row",
-    height: 6,
+    height: 8,
     backgroundColor: "#E8ECF5",
     borderRadius: 999,
     children: [
       {
         type: "stack",
         flex: filledFlex,
-        height: 6,
+        height: 8,
         backgroundColor: gaugeColor(ratio),
         borderRadius: 999,
         children: [],
@@ -548,7 +559,7 @@ function buildCompactProgressBar(ratio) {
       {
         type: "stack",
         flex: emptyFlex,
-        height: 6,
+        height: 8,
         backgroundColor: "#00000000",
         children: [],
       },
