@@ -197,13 +197,10 @@ function buildWidget(ctx, config, items) {
   if (family === "accessoryRectangular") return buildRectangularWidget(config, items);
   if (family === "systemSmall") return buildSmallWidget(config, items);
 
-  const displayLimit = family === "systemExtraLarge" ? 8 : family === "systemLarge" ? 6 : 4;
-  const displayItems = items.slice(0, displayLimit);
-
   return {
     type: "widget",
     padding: 16,
-    gap: 12,
+    gap: 10,
     backgroundGradient: {
       colors: ["#F7F8FC", "#ECEFF7"],
       startPoint: { x: 0, y: 0 },
@@ -211,16 +208,7 @@ function buildWidget(ctx, config, items) {
     },
     children: [
       buildHeader(config.title),
-      buildListCard(displayItems),
-      items.length > displayItems.length
-        ? {
-            type: "text",
-            text: `还有 ${items.length - displayItems.length} 个订阅未显示`,
-            font: { size: 11, weight: "medium" },
-            textColor: "#7C8193",
-            maxLines: 1,
-          }
-        : { type: "spacer", length: 0 },
+      buildListCard(items),
     ],
   };
 }
@@ -371,8 +359,8 @@ function buildListCard(items) {
   return {
     type: "stack",
     direction: "column",
-    gap: 8,
-    padding: 12,
+    gap: 4,
+    padding: 10,
     backgroundColor: "#FFFFFF",
     borderRadius: 22,
     shadowColor: "#ABB3C733",
@@ -388,27 +376,28 @@ function buildCompactRow(item) {
       type: "stack",
       direction: "row",
       alignItems: "center",
-      gap: 10,
-      padding: [6, 0, 6, 0],
+      gap: 8,
+      padding: [3, 0, 3, 0],
       children: [
-        buildMiniPercent(item.name, "ERR", "#D04545"),
+        buildMiniPercent("ERR", "#D04545"),
         {
           type: "stack",
           direction: "column",
-          gap: 2,
+          gap: 1,
           flex: 1,
           children: [
             {
               type: "text",
               text: item.name,
-              font: { size: 13, weight: "semibold" },
+              font: { size: 12, weight: "semibold" },
               textColor: "#151821",
               maxLines: 1,
+              minScale: 0.65,
             },
             {
               type: "text",
               text: item.errorText,
-              font: { size: 10, weight: "medium" },
+              font: { size: 9, weight: "medium" },
               textColor: "#D04545",
               maxLines: 1,
               minScale: 0.7,
@@ -427,47 +416,42 @@ function buildCompactRow(item) {
     type: "stack",
     direction: "row",
     alignItems: "center",
-    gap: 10,
-    padding: [6, 0, 6, 0],
+    gap: 8,
+    padding: [3, 0, 3, 0],
     children: [
-      buildMiniPercent(item.name, item.percentText, gaugeColor(item.ratio)),
+      buildMiniPercent(item.percentText, gaugeColor(item.ratio)),
       {
         type: "stack",
         direction: "column",
-        gap: 3,
+        gap: 2,
         flex: 1,
         children: [
           {
             type: "stack",
             direction: "row",
             alignItems: "center",
+            gap: 6,
             children: [
               {
                 type: "text",
                 text: item.name,
-                font: { size: 13, weight: "semibold" },
+                font: { size: 12, weight: "semibold" },
                 textColor: "#151821",
                 maxLines: 1,
-                minScale: 0.7,
+                minScale: 0.6,
+                flex: 1,
               },
-              { type: "spacer" },
-              {
-                type: "text",
-                text: item.percentText,
-                font: { size: 11, weight: "bold" },
-                textColor: gaugeColor(item.ratio),
-                maxLines: 1,
-              },
+              buildMetaPill(item.percentText, gaugeColor(item.ratio)),
             ],
           },
           buildCompactProgressBar(item.ratio),
           {
             type: "text",
             text: `${item.usedText} / ${item.totalText}${meta.length ? `  ·  ${meta.join("  ·  ")}` : ""}`,
-            font: { size: 10, weight: "medium" },
+            font: { size: 9, weight: "medium" },
             textColor: "#6E7588",
             maxLines: 1,
-            minScale: 0.65,
+            minScale: 0.55,
           },
         ],
       },
@@ -502,20 +486,39 @@ function buildPercentBadge(item) {
   };
 }
 
-function buildMiniPercent(_name, percentText, color) {
+function buildMiniPercent(percentText, color) {
   return {
     type: "stack",
     direction: "column",
     alignItems: "center",
     gap: 1,
-    padding: [6, 8, 6, 8],
+    width: 68,
+    padding: [6, 6, 6, 6],
     backgroundColor: "#F2F5FB",
     borderRadius: 14,
     children: [
       {
         type: "text",
         text: percentText,
-        font: { size: 11, weight: "bold" },
+        font: { size: 10, weight: "bold" },
+        textColor: color,
+        maxLines: 1,
+      },
+    ],
+  };
+}
+
+function buildMetaPill(text, color) {
+  return {
+    type: "stack",
+    padding: [2, 7, 2, 7],
+    backgroundColor: "#F2F5FB",
+    borderRadius: 999,
+    children: [
+      {
+        type: "text",
+        text,
+        font: { size: 9, weight: "bold" },
         textColor: color,
         maxLines: 1,
       },
