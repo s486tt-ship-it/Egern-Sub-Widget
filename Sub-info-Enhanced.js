@@ -2,14 +2,14 @@
  * Subscription panel script.
  * Reworked for up to 10 subscriptions with direct URL input
  * and broader clash-verge-rev style compatibility.
- * Version: 2.0.0
+ * Version: 2.1.0
  */
 
 const SLOT_SEPARATOR = "<<EgernPanelSlot>>";
 const FIELD_SEPARATOR = "<<EgernPanelField>>";
 const MAX_SUBSCRIPTIONS = 10;
 const DEFAULT_PANEL_TITLE = "";
-const DEFAULT_PANEL_ICON = "paperplane.circle.fill";
+const DEFAULT_PANEL_ICON = "";
 const DEFAULT_PANEL_COLOR = "#007AFF";
 
 const REQUEST_PROFILES = [
@@ -55,12 +55,7 @@ const rawArgument = typeof $argument === "string" ? $argument.trim() : "";
   const slots = context.slots.filter((slot) => slot.url).slice(0, MAX_SUBSCRIPTIONS);
 
   if (!slots.length) {
-    $done({
-      title: context.panelTitle,
-      content: "请至少填写一个机场订阅链接。",
-      icon: context.panelIcon,
-      "icon-color": context.panelColor,
-    });
+    $done(buildPanelPayload(context, context.panelTitle, "请至少填写一个机场订阅链接。"));
     return;
   }
 
@@ -69,13 +64,22 @@ const rawArgument = typeof $argument === "string" ? $argument.trim() : "";
     sections.push(await buildPanelSection(slot));
   }
 
-  $done({
-    title: buildPanelTitle(context),
-    content: sections.join("\n\n"),
-    icon: context.panelIcon,
-    "icon-color": context.panelColor,
-  });
+  $done(buildPanelPayload(context, buildPanelTitle(context), sections.join("\n\n")));
 })();
+
+function buildPanelPayload(context, title, content) {
+  const payload = {
+    title,
+    content,
+  };
+
+  if (context.panelIcon) {
+    payload.icon = context.panelIcon;
+    payload["icon-color"] = context.panelColor;
+  }
+
+  return payload;
+}
 
 function parseArguments(argument) {
   const fallback = {
@@ -238,23 +242,30 @@ async function buildPanelSection(slot) {
     .catch((err) => [err, null]);
 
   if (error || !info) {
-    return `${name}\n获取失败：${String(error || "subscription-userinfo missing")}`;
+    return `○ ${name}\n获取失败：${String(error || "subscription-userinfo missing")}`;
   }
 
   const used = Number(info.upload || 0) + Number(info.download || 0);
   const total = Number(info.total || 0);
-  const percent = total > 0 ? `${((used / total) * 100).toFixed(1)}%` : "--";
+  const ratio = total > 0 ? clamp(used / total, 0, 1) : null;
+  const percent = formatPercent(ratio);
+  const header = `${buildProgressCircle(ratio)} ${percent}  ${name}`;
   const lines = [
-    name,
-    `已用：${bytesToSize(used)} / ${bytesToSize(total)} (${percent})`,
+    header,
+    `已用 ${bytesToSize(used)} / ${bytesToSize(total)}`,
   ];
 
+  const meta = [];
   if (info.expire) {
-    lines.push(`到期：${formatDate(info.expire)}`);
+    meta.push(`到期 ${formatDate(info.expire)}`);
   }
 
   if (resetDay) {
-    lines.push(`重置：剩余 ${getRemainingDays(resetDay)} 天`);
+    meta.push(`重置 ${getRemainingDays(resetDay)} 天`);
+  }
+
+  if (meta.length) {
+    lines.push(meta.join("  ·  "));
   }
 
   return lines.join("\n");
@@ -402,6 +413,23 @@ function bytesToSize(bytes) {
   const units = ["B", "KB", "MB", "GB", "TB", "PB"];
   const power = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
   return `${(bytes / Math.pow(1024, power)).toFixed(power === 0 ? 0 : 2)} ${units[power]}`;
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function formatPercent(ratio) {
+  if (!Number.isFinite(ratio)) return "--";
+  return `${(ratio * 100).toFixed(1)}%`;
+}
+
+function buildProgressCircle(ratio) {
+  if (!Number.isFinite(ratio) || ratio <= 0) return "○";
+  if (ratio < 0.25) return "◔";
+  if (ratio < 0.5) return "◑";
+  if (ratio < 0.75) return "◕";
+  return "●";
 }
 
 function formatDate(expireValue) {
