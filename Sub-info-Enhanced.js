@@ -1,8 +1,8 @@
 /*
  * Subscription panel script.
  * Reworked for up to 10 subscriptions with direct URL input
- * and panel-friendly usage-focused layout for Egern.
- * Version: 3.0.1
+ * and panel-friendly card layout for Egern.
+ * Version: 3.1.0
  */
 
 const SLOT_SEPARATOR = "<<EgernPanelSlot>>";
@@ -10,7 +10,8 @@ const FIELD_SEPARATOR = "<<EgernPanelField>>";
 const MAX_SUBSCRIPTIONS = 10;
 const DEFAULT_PANEL_TITLE = "";
 const DEFAULT_PANEL_ICON = "";
-const DEFAULT_PANEL_COLOR = "#7AA7FF";
+const DEFAULT_PANEL_COLOR = "#4F86FF";
+const DEFAULT_BACKGROUND_COLOR = "#F5F5F7";
 
 const REQUEST_PROFILES = [
   {
@@ -64,13 +65,15 @@ const rawArgument = typeof $argument === "string" ? $argument.trim() : "";
     sections.push(await buildPanelSection(slot));
   }
 
-  $done(buildPanelPayload(context, buildPanelTitle(context), sections.join("\n\n")));
+  $done(buildPanelPayload(context, buildPanelTitle(context), buildPanelContent(sections)));
 })();
 
 function buildPanelPayload(context, title, content) {
   const payload = {
     title,
     content,
+    "background-color": context.backgroundColor,
+    style: "standard",
   };
 
   if (context.panelIcon) {
@@ -87,6 +90,7 @@ function parseArguments(argument) {
     hideUpdateTime: false,
     panelIcon: DEFAULT_PANEL_ICON,
     panelColor: DEFAULT_PANEL_COLOR,
+    backgroundColor: DEFAULT_BACKGROUND_COLOR,
     slots: [],
   };
 
@@ -104,6 +108,7 @@ function parseArguments(argument) {
       hideUpdateTime: isOnValue(metaParams.hide_update_time),
       panelIcon: DEFAULT_PANEL_ICON,
       panelColor: DEFAULT_PANEL_COLOR,
+      backgroundColor: DEFAULT_BACKGROUND_COLOR,
       slots,
     };
   }
@@ -148,6 +153,7 @@ function parseArguments(argument) {
     hideUpdateTime: isOnValue(params.hide_update_time),
     panelIcon: "",
     panelColor: params.panel_color || DEFAULT_PANEL_COLOR,
+    backgroundColor: params.background_color || DEFAULT_BACKGROUND_COLOR,
     slots,
   };
 }
@@ -241,24 +247,24 @@ async function buildPanelSection(slot) {
     .catch((err) => [err, null]);
 
   if (error || !info) {
-    return `${name}\n获取失败：${String(error || "subscription-userinfo missing")}`;
+    return {
+      name,
+      error: `获取失败：${String(error || "subscription-userinfo missing")}`,
+    };
   }
 
   const used = Number(info.upload || 0) + Number(info.download || 0);
   const total = Number(info.total || 0);
   const ratio = total > 0 ? clamp(used / total, 0, 1) : 0;
-  const percent = `${(ratio * 100).toFixed(1)}%`;
-  const lines = [
-    `${buildProgressGlyph(ratio)} ${percent}  ${name}`,
-    `已用 ${bytesToSize(used)} / ${bytesToSize(total)}`,
-  ];
-
-  const meta = [];
-  if (info.expire) meta.push(`到期 ${formatDate(info.expire)}`);
-  if (resetDay) meta.push(`重置 ${getRemainingDays(resetDay)} 天`);
-  if (meta.length) lines.push(meta.join("  ·  "));
-
-  return lines.join("\n");
+  return {
+    name,
+    usedText: bytesToSize(used),
+    totalText: bytesToSize(total),
+    percentText: `${(ratio * 100).toFixed(1)}%`,
+    progressBar: buildProgressBar(ratio),
+    expireText: info.expire ? formatDate(info.expire) : "",
+    resetText: resetDay ? `${getRemainingDays(resetDay)} 天` : "",
+  };
 }
 
 async function fetchSubscriptionInfo(url) {
@@ -402,12 +408,10 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
-function buildProgressGlyph(ratio) {
-  if (ratio <= 0) return "○";
-  if (ratio < 0.25) return "◔";
-  if (ratio < 0.5) return "◑";
-  if (ratio < 0.75) return "◕";
-  return "●";
+function buildProgressBar(ratio) {
+  const total = 10;
+  const filled = Math.max(0, Math.min(total, Math.round(ratio * total)));
+  return `${"●".repeat(filled)}${"○".repeat(total - filled)}`;
 }
 
 function bytesToSize(bytes) {
@@ -430,4 +434,35 @@ function formatClock(date) {
   const hours = `${date.getHours()}`.padStart(2, "0");
   const minutes = `${date.getMinutes()}`.padStart(2, "0");
   return `${hours}:${minutes}`;
+}
+
+function buildPanelContent(items) {
+  if (!items.length) return "暂无可显示内容";
+
+  const primary = items[0];
+  const extraCount = Math.max(0, items.length - 1);
+
+  if (primary.error) {
+    return [
+      `主订阅  ${primary.name}`,
+      primary.error,
+      extraCount > 0 ? `另有 ${extraCount} 个订阅未展示` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  const meta = [];
+  if (primary.expireText) meta.push(`到期 ${primary.expireText}`);
+  if (primary.resetText) meta.push(`重置 ${primary.resetText}`);
+
+  return [
+    `${primary.name}    ${primary.percentText}`,
+    primary.progressBar,
+    `已用 ${primary.usedText} / ${primary.totalText}`,
+    meta.join("  ·  "),
+    extraCount > 0 ? `另有 ${extraCount} 个订阅，可在编辑页切换查看` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
