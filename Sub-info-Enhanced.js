@@ -1,23 +1,16 @@
 /*
- * Subscription widget script.
+ * Subscription panel script.
  * Reworked for up to 10 subscriptions with direct URL input
- * and Widget DSL layout for Egern iOS widgets.
- * Version: 3.0.0
+ * and panel-friendly usage-focused layout for Egern.
+ * Version: 3.0.1
  */
 
 const SLOT_SEPARATOR = "<<EgernPanelSlot>>";
 const FIELD_SEPARATOR = "<<EgernPanelField>>";
 const MAX_SUBSCRIPTIONS = 10;
-const DEFAULT_PANEL_TITLE = "机场订阅信息";
-const MAX_RENDER_BY_FAMILY = {
-  systemSmall: 1,
-  systemMedium: 1,
-  systemLarge: 3,
-  systemExtraLarge: 4,
-  accessoryRectangular: 1,
-  accessoryInline: 1,
-  accessoryCircular: 1,
-};
+const DEFAULT_PANEL_TITLE = "";
+const DEFAULT_PANEL_ICON = "";
+const DEFAULT_PANEL_COLOR = "#7AA7FF";
 
 const REQUEST_PROFILES = [
   {
@@ -62,22 +55,38 @@ const rawArgument = typeof $argument === "string" ? $argument.trim() : "";
   const slots = context.slots.filter((slot) => slot.url).slice(0, MAX_SUBSCRIPTIONS);
 
   if (!slots.length) {
-    $done(buildErrorWidget(context, "请至少填写一个机场订阅链接。"));
+    $done(buildPanelPayload(context, context.panelTitle, "请至少填写一个机场订阅链接。"));
     return;
   }
 
   const sections = [];
   for (const slot of slots) {
-    sections.push(await buildSubscriptionData(slot));
+    sections.push(await buildPanelSection(slot));
   }
 
-  $done(buildWidget(context, sections));
+  $done(buildPanelPayload(context, buildPanelTitle(context), sections.join("\n\n")));
 })();
+
+function buildPanelPayload(context, title, content) {
+  const payload = {
+    title,
+    content,
+  };
+
+  if (context.panelIcon) {
+    payload.icon = context.panelIcon;
+    payload["icon-color"] = context.panelColor;
+  }
+
+  return payload;
+}
 
 function parseArguments(argument) {
   const fallback = {
     panelTitle: DEFAULT_PANEL_TITLE,
     hideUpdateTime: false,
+    panelIcon: DEFAULT_PANEL_ICON,
+    panelColor: DEFAULT_PANEL_COLOR,
     slots: [],
   };
 
@@ -91,8 +100,10 @@ function parseArguments(argument) {
     const slots = parseSlotPayload(payload);
     normalizeShiftedSlots(slots);
     return {
-      panelTitle: normalizePanelTitle(metaParams.panel_title) || DEFAULT_PANEL_TITLE,
+      panelTitle: normalizePanelTitle(metaParams.panel_title),
       hideUpdateTime: isOnValue(metaParams.hide_update_time),
+      panelIcon: DEFAULT_PANEL_ICON,
+      panelColor: DEFAULT_PANEL_COLOR,
       slots,
     };
   }
@@ -133,8 +144,10 @@ function parseArguments(argument) {
   normalizeShiftedSlots(slots);
 
   return {
-    panelTitle: normalizePanelTitle(params.panel_title) || DEFAULT_PANEL_TITLE,
+    panelTitle: normalizePanelTitle(params.panel_title),
     hideUpdateTime: isOnValue(params.hide_update_time),
+    panelIcon: "",
+    panelColor: params.panel_color || DEFAULT_PANEL_COLOR,
     slots,
   };
 }
@@ -194,6 +207,13 @@ function isOnValue(value) {
   return String(value || "").trim().toLowerCase() === "on";
 }
 
+function buildPanelTitle(context) {
+  const parts = [];
+  if (context.panelTitle) parts.push(context.panelTitle);
+  if (!context.hideUpdateTime) parts.push(formatClock(new Date()));
+  return parts.join(" | ");
+}
+
 function normalizeShiftedSlots(slots) {
   for (let index = 0; index < slots.length - 1; index += 1) {
     const current = slots[index];
@@ -213,7 +233,7 @@ function isLikelyUrl(value) {
   return /^https?:\/\//i.test(String(value || "").trim());
 }
 
-async function buildSubscriptionData(slot) {
+async function buildPanelSection(slot) {
   const name = slot.name || inferNameFromUrl(slot.url);
   const resetDay = normalizeResetDay(slot.resetDay);
   const [error, info] = await fetchSubscriptionInfo(slot.url)
@@ -221,27 +241,24 @@ async function buildSubscriptionData(slot) {
     .catch((err) => [err, null]);
 
   if (error || !info) {
-    return {
-      name,
-      error: `获取失败：${String(error || "subscription-userinfo missing")}`,
-    };
+    return `${name}\n获取失败：${String(error || "subscription-userinfo missing")}`;
   }
 
   const used = Number(info.upload || 0) + Number(info.download || 0);
   const total = Number(info.total || 0);
   const ratio = total > 0 ? clamp(used / total, 0, 1) : 0;
+  const percent = `${(ratio * 100).toFixed(1)}%`;
+  const lines = [
+    `${buildProgressGlyph(ratio)} ${percent}  ${name}`,
+    `已用 ${bytesToSize(used)} / ${bytesToSize(total)}`,
+  ];
 
-  return {
-    name,
-    used,
-    total,
-    ratio,
-    percentText: `${(ratio * 100).toFixed(1)}%`,
-    usedText: bytesToSize(used),
-    totalText: bytesToSize(total),
-    expireText: info.expire ? formatDate(info.expire) : "",
-    resetText: resetDay ? `${getRemainingDays(resetDay)} 天` : "",
-  };
+  const meta = [];
+  if (info.expire) meta.push(`到期 ${formatDate(info.expire)}`);
+  if (resetDay) meta.push(`重置 ${getRemainingDays(resetDay)} 天`);
+  if (meta.length) lines.push(meta.join("  ·  "));
+
+  return lines.join("\n");
 }
 
 async function fetchSubscriptionInfo(url) {
@@ -385,6 +402,14 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+function buildProgressGlyph(ratio) {
+  if (ratio <= 0) return "○";
+  if (ratio < 0.25) return "◔";
+  if (ratio < 0.5) return "◑";
+  if (ratio < 0.75) return "◕";
+  return "●";
+}
+
 function bytesToSize(bytes) {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB", "PB"];
@@ -405,224 +430,4 @@ function formatClock(date) {
   const hours = `${date.getHours()}`.padStart(2, "0");
   const minutes = `${date.getMinutes()}`.padStart(2, "0");
   return `${hours}:${minutes}`;
-}
-
-function buildWidget(context, items) {
-  const family = typeof $widgetFamily === "string" ? $widgetFamily : "systemMedium";
-  const limit = MAX_RENDER_BY_FAMILY[family] || 1;
-  const visibleItems = items.slice(0, limit);
-  const remainingCount = Math.max(0, items.length - visibleItems.length);
-  const headerText = context.hideUpdateTime
-    ? context.panelTitle
-    : `${context.panelTitle} | ${formatClock(new Date())}`;
-
-  const children = [
-    {
-      type: "text",
-      text: headerText,
-      font: { size: 16, weight: "semibold" },
-      textColor: "#F5F5F7",
-      maxLines: 1,
-      minScale: 0.65,
-    },
-    { type: "spacer", length: 14 },
-  ];
-
-  visibleItems.forEach((item, index) => {
-    children.push(buildSubscriptionStack(item, index === 0 && visibleItems.length === 1));
-    if (index !== visibleItems.length - 1) {
-      children.push({ type: "spacer", length: 12 });
-    }
-  });
-
-  if (remainingCount > 0) {
-    children.push({ type: "spacer", length: 10 });
-    children.push({
-      type: "text",
-      text: `还有 ${remainingCount} 个订阅未显示`,
-      font: { size: 12, weight: "medium" },
-      textColor: "#8E8E93",
-      maxLines: 1,
-    });
-  }
-
-  return {
-    type: "widget",
-    padding: 16,
-    gap: 0,
-    backgroundColor: "#1C1C1E",
-    children,
-  };
-}
-
-function buildErrorWidget(context, message) {
-  return {
-    type: "widget",
-    padding: 16,
-    gap: 10,
-    backgroundColor: "#1C1C1E",
-    children: [
-      {
-        type: "text",
-        text: context.panelTitle || DEFAULT_PANEL_TITLE,
-        font: { size: 16, weight: "semibold" },
-        textColor: "#F5F5F7",
-        maxLines: 1,
-      },
-      {
-        type: "text",
-        text: message,
-        font: { size: 14, weight: "medium" },
-        textColor: "#FF9F8F",
-      },
-    ],
-  };
-}
-
-function buildSubscriptionStack(item, emphasizeGauge) {
-  if (item.error) {
-    return {
-      type: "stack",
-      direction: "column",
-      gap: 6,
-      padding: 12,
-      backgroundColor: "#2C2C2E",
-      borderRadius: 18,
-      children: [
-        {
-          type: "text",
-          text: item.name,
-          font: { size: 15, weight: "semibold" },
-          textColor: "#FFFFFF",
-          maxLines: 1,
-        },
-        {
-          type: "text",
-          text: item.error,
-          font: { size: 12, weight: "medium" },
-          textColor: "#FF9F8F",
-          maxLines: 3,
-          minScale: 0.7,
-        },
-      ],
-    };
-  }
-
-  const gaugeSize = emphasizeGauge ? 88 : 64;
-  const detailGap = emphasizeGauge ? 7 : 5;
-  const metaParts = [];
-  if (item.expireText) metaParts.push(`到期 ${item.expireText}`);
-  if (item.resetText) metaParts.push(`重置 ${item.resetText}`);
-
-  return {
-    type: "stack",
-    direction: "row",
-    alignItems: "center",
-    gap: 14,
-    padding: 12,
-    backgroundColor: "#2C2C2E",
-    borderRadius: 20,
-    children: [
-      {
-        type: "image",
-        src: buildGaugeDataUri(item.percentText, item.ratio),
-        width: gaugeSize,
-        height: gaugeSize,
-      },
-      {
-        type: "stack",
-        direction: "column",
-        gap: detailGap,
-        flex: 1,
-        children: [
-          {
-            type: "text",
-            text: item.name,
-            font: { size: emphasizeGauge ? 20 : 15, weight: "semibold" },
-            textColor: "#FFFFFF",
-            maxLines: 1,
-            minScale: 0.6,
-          },
-          {
-            type: "text",
-            text: `已用 ${item.usedText} / ${item.totalText}`,
-            font: { size: emphasizeGauge ? 14 : 12, weight: "medium" },
-            textColor: "#D7D7DB",
-            maxLines: 1,
-            minScale: 0.6,
-          },
-          {
-            type: "text",
-            text: metaParts.length ? metaParts.join("  ·  ") : `使用率 ${item.percentText}`,
-            font: { size: emphasizeGauge ? 13 : 11, weight: "medium" },
-            textColor: "#A1A1AA",
-            maxLines: 1,
-            minScale: 0.6,
-          },
-        ],
-      },
-    ],
-  };
-}
-
-function buildGaugeDataUri(percentText, ratio) {
-  const size = 220;
-  const stroke = 18;
-  const radius = 84;
-  const center = size / 2;
-  const circumference = 2 * Math.PI * radius;
-  const dashOffset = circumference * (1 - clamp(ratio, 0, 1));
-  const ringColor = gaugeColor(ratio);
-
-  const svg = `
-<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-  <circle cx="${center}" cy="${center}" r="${radius}" fill="none" stroke="#3A3A3C" stroke-width="${stroke}" opacity="0.55"/>
-  <circle
-    cx="${center}"
-    cy="${center}"
-    r="${radius}"
-    fill="none"
-    stroke="${ringColor}"
-    stroke-width="${stroke}"
-    stroke-linecap="round"
-    stroke-dasharray="${circumference}"
-    stroke-dashoffset="${dashOffset}"
-    transform="rotate(-90 ${center} ${center})"
-  />
-  <text
-    x="50%"
-    y="48%"
-    text-anchor="middle"
-    font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-    font-size="32"
-    font-weight="700"
-    fill="#FFFFFF"
-  >${percentText}</text>
-  <text
-    x="50%"
-    y="63%"
-    text-anchor="middle"
-    font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-    font-size="16"
-    font-weight="600"
-    letter-spacing="3"
-    fill="#9A9AA2"
-  >USED</text>
-</svg>`.trim();
-
-  return toSvgDataUri(svg);
-}
-
-function gaugeColor(ratio) {
-  if (ratio >= 0.9) return "#FF6B6B";
-  if (ratio >= 0.75) return "#FFB74D";
-  return "#7AA7FF";
-}
-
-function toSvgDataUri(svg) {
-  if (typeof btoa === "function") {
-    return `data:image/svg+xml;base64,${btoa(svg)}`;
-  }
-
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
