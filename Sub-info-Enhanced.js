@@ -196,12 +196,14 @@ function buildWidget(ctx, config, items) {
   if (family === "accessoryCircular") return buildCircularWidget(config, items);
   if (family === "accessoryRectangular") return buildRectangularWidget(config, items);
 
-  const displayItems = family === "systemLarge" || family === "systemExtraLarge" ? items.slice(0, 2) : items.slice(0, 1);
+  const displayLimit =
+    family === "systemExtraLarge" ? 6 : family === "systemLarge" ? 4 : family === "systemMedium" ? 2 : 1;
+  const displayItems = items.slice(0, displayLimit);
 
   return {
     type: "widget",
-    padding: 16,
-    gap: 12,
+    padding: family === "systemSmall" ? 14 : 16,
+    gap: 10,
     backgroundGradient: {
       colors: ["#F7F8FC", "#ECEFF7"],
       startPoint: { x: 0, y: 0 },
@@ -232,7 +234,7 @@ function buildHeader(title) {
       {
         type: "text",
         text: title,
-        font: { size: "headline", weight: "semibold" },
+        font: { size: 16, weight: "semibold" },
         textColor: "#151821",
         maxLines: 1,
         minScale: 0.7,
@@ -242,7 +244,7 @@ function buildHeader(title) {
         type: "date",
         date: new Date().toISOString(),
         format: "time",
-        font: { size: "caption1", weight: "semibold" },
+        font: { size: 12, weight: "semibold" },
         textColor: "#7C8193",
       },
     ],
@@ -265,14 +267,14 @@ function buildMainCard(item) {
         {
           type: "text",
           text: item.name,
-          font: { size: "headline", weight: "semibold" },
+          font: { size: 15, weight: "semibold" },
           textColor: "#151821",
           maxLines: 1,
         },
         {
           type: "text",
           text: item.errorText,
-          font: { size: "caption1", weight: "medium" },
+          font: { size: 12, weight: "medium" },
           textColor: "#D04545",
           maxLines: 3,
           minScale: 0.7,
@@ -287,10 +289,9 @@ function buildMainCard(item) {
 
   return {
     type: "stack",
-    direction: "row",
-    alignItems: "center",
-    gap: 14,
-    padding: 16,
+    direction: "column",
+    gap: 10,
+    padding: 14,
     backgroundColor: "#FFFFFF",
     borderRadius: 22,
     shadowColor: "#ABB3C733",
@@ -298,46 +299,107 @@ function buildMainCard(item) {
     shadowOffset: { x: 0, y: 4 },
     children: [
       {
-        type: "image",
-        src: buildGaugeDataUri(item.percentText, item.ratio),
-        width: 92,
-        height: 92,
-      },
-      {
         type: "stack",
-        direction: "column",
-        gap: 8,
-        flex: 1,
+        direction: "row",
+        alignItems: "start",
+        gap: 10,
         children: [
           {
-            type: "text",
-            text: item.name,
-            font: { size: "title3", weight: "semibold" },
-            textColor: "#151821",
-            maxLines: 1,
-            minScale: 0.65,
+            type: "stack",
+            direction: "column",
+            gap: 2,
+            children: [
+              {
+                type: "text",
+                text: item.percentText,
+                font: { size: 24, weight: "bold" },
+                textColor: gaugeColor(item.ratio),
+                maxLines: 1,
+              },
+              {
+                type: "text",
+                text: "USED",
+                font: { size: 10, weight: "semibold" },
+                textColor: "#98A0B3",
+                maxLines: 1,
+              },
+            ],
           },
           {
-            type: "text",
-            text: `已用 ${item.usedText} / ${item.totalText}`,
-            font: { size: "subheadline", weight: "medium" },
-            textColor: "#5C6272",
-            maxLines: 2,
-            minScale: 0.7,
-          },
-          chips.length
-            ? {
-                type: "stack",
-                direction: "row",
-                gap: 8,
-                children: chips,
-              }
-            : {
+            type: "stack",
+            direction: "column",
+            gap: 5,
+            flex: 1,
+            children: [
+              {
                 type: "text",
-                text: `使用率 ${item.percentText}`,
-                font: { size: "caption1", weight: "medium" },
-                textColor: "#7C8193",
+                text: item.name,
+                font: { size: 15, weight: "semibold" },
+                textColor: "#151821",
+                maxLines: 1,
+                minScale: 0.6,
               },
+              {
+                type: "text",
+                text: `已用 ${item.usedText} / ${item.totalText}`,
+                font: { size: 12, weight: "medium" },
+                textColor: "#5C6272",
+                maxLines: 2,
+                minScale: 0.7,
+              },
+            ],
+          },
+        ],
+      },
+      buildProgressBarStack(item.ratio),
+      chips.length
+        ? {
+            type: "stack",
+            direction: "row",
+            gap: 8,
+            children: chips,
+          }
+        : {
+            type: "text",
+            text: `使用率 ${item.percentText}`,
+            font: { size: 11, weight: "medium" },
+            textColor: "#7C8193",
+          },
+    ],
+  };
+}
+
+function buildProgressBarStack(ratio) {
+  const filledFlex = Math.max(1, Math.round(clamp(ratio, 0, 1) * 100));
+  const emptyFlex = Math.max(1, 100 - filledFlex);
+
+  return {
+    type: "stack",
+    direction: "column",
+    gap: 6,
+    children: [
+      {
+        type: "stack",
+        direction: "row",
+        height: 8,
+        backgroundColor: "#E8ECF5",
+        borderRadius: 999,
+        children: [
+          {
+            type: "stack",
+            flex: filledFlex,
+            height: 8,
+            backgroundColor: gaugeColor(ratio),
+            borderRadius: 999,
+            children: [],
+          },
+          {
+            type: "stack",
+            flex: emptyFlex,
+            height: 8,
+            backgroundColor: "#00000000",
+            children: [],
+          },
         ],
       },
     ],
@@ -356,14 +418,14 @@ function buildChip(label, value) {
       {
         type: "text",
         text: label,
-        font: { size: "caption2", weight: "medium" },
+        font: { size: 10, weight: "medium" },
         textColor: "#8C92A3",
         maxLines: 1,
       },
       {
         type: "text",
         text: value,
-        font: { size: "caption1", weight: "semibold" },
+        font: { size: 12, weight: "semibold" },
         textColor: "#20242F",
         maxLines: 1,
       },
@@ -381,7 +443,7 @@ function buildInlineWidget(config, items) {
         {
           type: "text",
           text: `${config.title} 获取失败`,
-          font: { size: "caption2", weight: "medium" },
+          font: { size: 11, weight: "medium" },
           textColor: "#FFFFFF",
         },
       ],
@@ -395,7 +457,7 @@ function buildInlineWidget(config, items) {
       {
         type: "text",
         text: `${item.name} ${item.percentText}`,
-        font: { size: "caption1", weight: "semibold" },
+        font: { size: 12, weight: "semibold" },
         textColor: "#FFFFFF",
         maxLines: 1,
       },
@@ -427,19 +489,11 @@ function buildCircularWidget(config, items) {
     backgroundColor: "#151821",
     children: [
       {
-        type: "image",
-        src: buildGaugeDataUri(item.percentText, item.ratio, {
-          background: "#232734",
-          foreground: gaugeColor(item.ratio),
-          textColor: "#FFFFFF",
-          subTextColor: "#B3B9C8",
-          size: 180,
-          stroke: 16,
-          fontSize: 34,
-          subFontSize: 14,
-        }),
-        width: 58,
-        height: 58,
+        type: "text",
+        text: item.percentText,
+        font: { size: 16, weight: "bold" },
+        textColor: "#FFFFFF",
+        textAlign: "center",
       },
     ],
   };
@@ -476,19 +530,25 @@ function buildRectangularWidget(config, items) {
         gap: 10,
         children: [
           {
-            type: "image",
-            src: buildGaugeDataUri(item.percentText, item.ratio, {
-              background: "#232734",
-              foreground: gaugeColor(item.ratio),
-              textColor: "#FFFFFF",
-              subTextColor: "#B3B9C8",
-              size: 180,
-              stroke: 16,
-              fontSize: 34,
-              subFontSize: 14,
-            }),
-            width: 48,
-            height: 48,
+            type: "stack",
+            direction: "column",
+            gap: 2,
+            children: [
+              {
+                type: "text",
+                text: item.percentText,
+                font: { size: 16, weight: "bold" },
+                textColor: "#FFFFFF",
+                maxLines: 1,
+              },
+              {
+                type: "text",
+                text: item.name,
+                font: { size: 11, weight: "semibold" },
+                textColor: "#FFFFFF",
+                maxLines: 1,
+              },
+            ],
           },
           {
             type: "stack",
@@ -498,15 +558,8 @@ function buildRectangularWidget(config, items) {
             children: [
               {
                 type: "text",
-                text: item.name,
-                font: { size: "caption1", weight: "semibold" },
-                textColor: "#FFFFFF",
-                maxLines: 1,
-              },
-              {
-                type: "text",
                 text: `${item.usedText} / ${item.totalText}`,
-                font: { size: "caption2", weight: "medium" },
+                font: { size: 10, weight: "medium" },
                 textColor: "#B3B9C8",
                 maxLines: 1,
               },
@@ -541,14 +594,14 @@ function buildEmptyWidget(config) {
           {
             type: "text",
             text: "请先在模块参数中填写订阅链接",
-            font: { size: "headline", weight: "semibold" },
+            font: { size: 15, weight: "semibold" },
             textColor: "#151821",
             maxLines: 2,
           },
           {
             type: "text",
             text: "支持 10 组机场名称、订阅链接和重置日",
-            font: { size: "subheadline", weight: "medium" },
+            font: { size: 12, weight: "medium" },
             textColor: "#7C8193",
             maxLines: 2,
           },
@@ -558,91 +611,10 @@ function buildEmptyWidget(config) {
   };
 }
 
-function buildGaugeDataUri(percentText, ratio, theme) {
-  const settings = {
-    size: 220,
-    stroke: 18,
-    fontSize: 34,
-    subFontSize: 14,
-    background: "#E7ECF6",
-    foreground: gaugeColor(ratio),
-    textColor: "#1C2230",
-    subTextColor: "#8C92A3",
-    ...theme,
-  };
-
-  const radius = (settings.size - settings.stroke) / 2 - 4;
-  const center = settings.size / 2;
-  const circumference = 2 * Math.PI * radius;
-  const dashOffset = circumference * (1 - clamp(ratio, 0, 1));
-  const svg = `
-<svg xmlns="http://www.w3.org/2000/svg" width="${settings.size}" height="${settings.size}" viewBox="0 0 ${settings.size} ${settings.size}">
-  <circle cx="${center}" cy="${center}" r="${radius}" fill="none" stroke="${settings.background}" stroke-width="${settings.stroke}" />
-  <circle
-    cx="${center}"
-    cy="${center}"
-    r="${radius}"
-    fill="none"
-    stroke="${settings.foreground}"
-    stroke-width="${settings.stroke}"
-    stroke-linecap="round"
-    stroke-dasharray="${circumference}"
-    stroke-dashoffset="${dashOffset}"
-    transform="rotate(-90 ${center} ${center})"
-  />
-  <text x="50%" y="49%" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="${settings.fontSize}" font-weight="700" fill="${settings.textColor}">${percentText}</text>
-  <text x="50%" y="63%" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="${settings.subFontSize}" font-weight="600" letter-spacing="2" fill="${settings.subTextColor}">USED</text>
-</svg>`.trim();
-
-  return `data:image/svg+xml;base64,${base64Encode(svg)}`;
-}
-
 function gaugeColor(ratio) {
   if (ratio >= 0.9) return "#F05C4E";
   if (ratio >= 0.75) return "#F6A63A";
   return "#6B8CFF";
-}
-
-function base64Encode(input) {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  const bytes = utf8Encode(input);
-  let output = "";
-
-  for (let i = 0; i < bytes.length; i += 3) {
-    const a = bytes[i];
-    const b = i + 1 < bytes.length ? bytes[i + 1] : 0;
-    const c = i + 2 < bytes.length ? bytes[i + 2] : 0;
-    const triple = (a << 16) | (b << 8) | c;
-
-    output += chars[(triple >> 18) & 63];
-    output += chars[(triple >> 12) & 63];
-    output += i + 1 < bytes.length ? chars[(triple >> 6) & 63] : "=";
-    output += i + 2 < bytes.length ? chars[triple & 63] : "=";
-  }
-
-  return output;
-}
-
-function utf8Encode(input) {
-  const bytes = [];
-  for (const char of input) {
-    const code = char.codePointAt(0);
-    if (code <= 0x7f) {
-      bytes.push(code);
-    } else if (code <= 0x7ff) {
-      bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f));
-    } else if (code <= 0xffff) {
-      bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
-    } else {
-      bytes.push(
-        0xf0 | (code >> 18),
-        0x80 | ((code >> 12) & 0x3f),
-        0x80 | ((code >> 6) & 0x3f),
-        0x80 | (code & 0x3f)
-      );
-    }
-  }
-  return bytes;
 }
 
 function sanitizeTemplateValue(value) {
