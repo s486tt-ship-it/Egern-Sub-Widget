@@ -195,14 +195,41 @@ function buildWidget(ctx, config, items) {
   if (family === "accessoryInline") return buildInlineWidget(config, items);
   if (family === "accessoryCircular") return buildCircularWidget(config, items);
   if (family === "accessoryRectangular") return buildRectangularWidget(config, items);
+  if (family === "systemSmall") return buildSmallWidget(config, items);
 
-  const displayLimit =
-    family === "systemExtraLarge" ? 6 : family === "systemLarge" ? 4 : family === "systemMedium" ? 2 : 1;
+  const displayLimit = family === "systemExtraLarge" ? 8 : family === "systemLarge" ? 6 : 4;
   const displayItems = items.slice(0, displayLimit);
 
   return {
     type: "widget",
-    padding: family === "systemSmall" ? 14 : 16,
+    padding: 16,
+    gap: 12,
+    backgroundGradient: {
+      colors: ["#F7F8FC", "#ECEFF7"],
+      startPoint: { x: 0, y: 0 },
+      endPoint: { x: 1, y: 1 },
+    },
+    children: [
+      buildHeader(config.title),
+      buildListCard(displayItems),
+      items.length > displayItems.length
+        ? {
+            type: "text",
+            text: `还有 ${items.length - displayItems.length} 个订阅未显示`,
+            font: { size: 11, weight: "medium" },
+            textColor: "#7C8193",
+            maxLines: 1,
+          }
+        : { type: "spacer", length: 0 },
+    ],
+  };
+}
+
+function buildSmallWidget(config, items) {
+  const item = items[0];
+  return {
+    type: "widget",
+    padding: 14,
     gap: 10,
     backgroundGradient: {
       colors: ["#F7F8FC", "#ECEFF7"],
@@ -211,16 +238,7 @@ function buildWidget(ctx, config, items) {
     },
     children: [
       buildHeader(config.title),
-      ...displayItems.map((item) => buildMainCard(item)),
-      items.length > displayItems.length
-        ? {
-            type: "text",
-            text: `还有 ${items.length - displayItems.length} 个订阅未显示`,
-            font: { size: "caption1", weight: "medium" },
-            textColor: "#7C8193",
-            maxLines: 1,
-          }
-        : { type: "spacer", length: 0 },
+      item ? buildMainCard(item) : buildEmptyWidget(config),
     ],
   };
 }
@@ -301,30 +319,10 @@ function buildMainCard(item) {
       {
         type: "stack",
         direction: "row",
-        alignItems: "start",
-        gap: 10,
+        alignItems: "center",
+        gap: 12,
         children: [
-          {
-            type: "stack",
-            direction: "column",
-            gap: 2,
-            children: [
-              {
-                type: "text",
-                text: item.percentText,
-                font: { size: 24, weight: "bold" },
-                textColor: gaugeColor(item.ratio),
-                maxLines: 1,
-              },
-              {
-                type: "text",
-                text: "USED",
-                font: { size: 10, weight: "semibold" },
-                textColor: "#98A0B3",
-                maxLines: 1,
-              },
-            ],
-          },
+          buildPercentBadge(item),
           {
             type: "stack",
             direction: "column",
@@ -365,6 +363,192 @@ function buildMainCard(item) {
             font: { size: 11, weight: "medium" },
             textColor: "#7C8193",
           },
+    ],
+  };
+}
+
+function buildListCard(items) {
+  return {
+    type: "stack",
+    direction: "column",
+    gap: 8,
+    padding: 12,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 22,
+    shadowColor: "#ABB3C733",
+    shadowRadius: 10,
+    shadowOffset: { x: 0, y: 4 },
+    children: items.map((item) => buildCompactRow(item)),
+  };
+}
+
+function buildCompactRow(item) {
+  if (!item.ok) {
+    return {
+      type: "stack",
+      direction: "row",
+      alignItems: "center",
+      gap: 10,
+      padding: [6, 0, 6, 0],
+      children: [
+        buildMiniPercent(item.name, "ERR", "#D04545"),
+        {
+          type: "stack",
+          direction: "column",
+          gap: 2,
+          flex: 1,
+          children: [
+            {
+              type: "text",
+              text: item.name,
+              font: { size: 13, weight: "semibold" },
+              textColor: "#151821",
+              maxLines: 1,
+            },
+            {
+              type: "text",
+              text: item.errorText,
+              font: { size: 10, weight: "medium" },
+              textColor: "#D04545",
+              maxLines: 1,
+              minScale: 0.7,
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  const meta = [];
+  if (item.expireText) meta.push(item.expireText);
+  if (item.resetText) meta.push(`重置 ${item.resetText}`);
+
+  return {
+    type: "stack",
+    direction: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: [6, 0, 6, 0],
+    children: [
+      buildMiniPercent(item.name, item.percentText, gaugeColor(item.ratio)),
+      {
+        type: "stack",
+        direction: "column",
+        gap: 3,
+        flex: 1,
+        children: [
+          {
+            type: "stack",
+            direction: "row",
+            alignItems: "center",
+            children: [
+              {
+                type: "text",
+                text: item.name,
+                font: { size: 13, weight: "semibold" },
+                textColor: "#151821",
+                maxLines: 1,
+                minScale: 0.7,
+              },
+              { type: "spacer" },
+              {
+                type: "text",
+                text: item.percentText,
+                font: { size: 11, weight: "bold" },
+                textColor: gaugeColor(item.ratio),
+                maxLines: 1,
+              },
+            ],
+          },
+          buildCompactProgressBar(item.ratio),
+          {
+            type: "text",
+            text: `${item.usedText} / ${item.totalText}${meta.length ? `  ·  ${meta.join("  ·  ")}` : ""}`,
+            font: { size: 10, weight: "medium" },
+            textColor: "#6E7588",
+            maxLines: 1,
+            minScale: 0.65,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function buildPercentBadge(item) {
+  return {
+    type: "stack",
+    direction: "column",
+    gap: 2,
+    padding: [10, 12, 10, 12],
+    backgroundColor: "#F2F5FB",
+    borderRadius: 18,
+    children: [
+      {
+        type: "text",
+        text: item.percentText,
+        font: { size: 22, weight: "bold" },
+        textColor: gaugeColor(item.ratio),
+        maxLines: 1,
+      },
+      {
+        type: "text",
+        text: "USED",
+        font: { size: 10, weight: "semibold" },
+        textColor: "#98A0B3",
+        maxLines: 1,
+      },
+    ],
+  };
+}
+
+function buildMiniPercent(_name, percentText, color) {
+  return {
+    type: "stack",
+    direction: "column",
+    alignItems: "center",
+    gap: 1,
+    padding: [6, 8, 6, 8],
+    backgroundColor: "#F2F5FB",
+    borderRadius: 14,
+    children: [
+      {
+        type: "text",
+        text: percentText,
+        font: { size: 11, weight: "bold" },
+        textColor: color,
+        maxLines: 1,
+      },
+    ],
+  };
+}
+
+function buildCompactProgressBar(ratio) {
+  const filledFlex = Math.max(1, Math.round(clamp(ratio, 0, 1) * 100));
+  const emptyFlex = Math.max(1, 100 - filledFlex);
+
+  return {
+    type: "stack",
+    direction: "row",
+    height: 6,
+    backgroundColor: "#E8ECF5",
+    borderRadius: 999,
+    children: [
+      {
+        type: "stack",
+        flex: filledFlex,
+        height: 6,
+        backgroundColor: gaugeColor(ratio),
+        borderRadius: 999,
+        children: [],
+      },
+      {
+        type: "stack",
+        flex: emptyFlex,
+        height: 6,
+        backgroundColor: "#00000000",
+        children: [],
+      },
     ],
   };
 }
