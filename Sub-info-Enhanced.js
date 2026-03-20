@@ -1,17 +1,10 @@
 /*
- * Subscription panel script.
- * Reworked for up to 10 subscriptions with direct URL input
- * and panel-friendly card layout for Egern.
- * Version: 3.1.0
+ * Egern subscription widget.
+ * Version: 4.0.0
  */
 
-const SLOT_SEPARATOR = "<<EgernPanelSlot>>";
-const FIELD_SEPARATOR = "<<EgernPanelField>>";
 const MAX_SUBSCRIPTIONS = 10;
-const DEFAULT_PANEL_TITLE = "";
-const DEFAULT_PANEL_ICON = "";
-const DEFAULT_PANEL_COLOR = "#4F86FF";
-const DEFAULT_BACKGROUND_COLOR = "#F5F5F7";
+const DEFAULT_TITLE = "机场订阅信息";
 
 const REQUEST_PROFILES = [
   {
@@ -49,234 +42,95 @@ const REQUEST_PROFILES = [
   },
 ];
 
-const rawArgument = typeof $argument === "string" ? $argument.trim() : "";
+export default async function (ctx) {
+  const config = parseEnv(ctx.env || {});
+  const activeSlots = config.slots.filter((slot) => slot.url).slice(0, MAX_SUBSCRIPTIONS);
 
-(async () => {
-  const context = parseArguments(rawArgument);
-  const slots = context.slots.filter((slot) => slot.url).slice(0, MAX_SUBSCRIPTIONS);
-
-  if (!slots.length) {
-    $done(buildPanelPayload(context, context.panelTitle, "请至少填写一个机场订阅链接。"));
-    return;
+  if (!activeSlots.length) {
+    return buildEmptyWidget(config);
   }
 
-  const sections = [];
-  for (const slot of slots) {
-    sections.push(await buildPanelSection(slot));
+  const items = [];
+  for (const slot of activeSlots) {
+    items.push(await loadSubscription(ctx, slot));
   }
 
-  $done(buildPanelPayload(context, buildPanelTitle(context), buildPanelContent(sections)));
-})();
-
-function buildPanelPayload(context, title, content) {
-  const payload = {
-    title,
-    content,
-    "background-color": context.backgroundColor,
-    style: "standard",
-  };
-
-  if (context.panelIcon) {
-    payload.icon = context.panelIcon;
-    payload["icon-color"] = context.panelColor;
-  }
-
-  return payload;
+  return buildWidget(ctx, config, items);
 }
 
-function parseArguments(argument) {
-  const fallback = {
-    panelTitle: DEFAULT_PANEL_TITLE,
-    hideUpdateTime: false,
-    panelIcon: DEFAULT_PANEL_ICON,
-    panelColor: DEFAULT_PANEL_COLOR,
-    backgroundColor: DEFAULT_BACKGROUND_COLOR,
-    slots: [],
-  };
-
-  if (!argument) return fallback;
-
-  const payloadIndex = argument.indexOf("payload=");
-  if (payloadIndex !== -1) {
-    const metaPart = payloadIndex > 0 ? argument.slice(0, payloadIndex - 1) : "";
-    const metaParams = parseKeyValueArgument(metaPart);
-    const payload = argument.slice(payloadIndex + "payload=".length);
-    const slots = parseSlotPayload(payload);
-    normalizeShiftedSlots(slots);
-    return {
-      panelTitle: normalizePanelTitle(metaParams.panel_title),
-      hideUpdateTime: isOnValue(metaParams.hide_update_time),
-      panelIcon: DEFAULT_PANEL_ICON,
-      panelColor: DEFAULT_PANEL_COLOR,
-      backgroundColor: DEFAULT_BACKGROUND_COLOR,
-      slots,
-    };
-  }
-
-  const params = parseKeyValueArgument(argument);
+function parseEnv(env) {
   const slots = [];
-
-  if (params.url) {
-    slots.push({
-      name: sanitizeTemplateValue(params.title || params.name || ""),
-      url: sanitizeTemplateValue(params.url),
-      resetDay: sanitizeTemplateValue(params.reset_day || params.resetDay || ""),
-    });
-  }
 
   for (let index = 1; index <= MAX_SUBSCRIPTIONS; index += 1) {
     slots.push({
-      name: sanitizeTemplateValue(
-        params[`title${index}`] ||
-          params[`name${index}`] ||
-          params[`NAME${index}`] ||
-          params[`机场名称${index}`] ||
-          ""
-      ),
-      url: sanitizeTemplateValue(
-        params[`url${index}`] || params[`URL${index}`] || params[`订阅链接${index}`] || ""
-      ),
-      resetDay: sanitizeTemplateValue(
-        params[`resetDay${index}`] ||
-          params[`reset_day${index}`] ||
-          params[`RESET_Day${index}`] ||
-          params[`重置日${index}`] ||
-          ""
-      ),
+      name: sanitizeTemplateValue(env[`NAME${index}`]),
+      url: sanitizeTemplateValue(env[`URL${index}`]),
+      resetDay: sanitizeTemplateValue(env[`RESET_DAY${index}`]),
     });
   }
 
   normalizeShiftedSlots(slots);
 
   return {
-    panelTitle: normalizePanelTitle(params.panel_title),
-    hideUpdateTime: isOnValue(params.hide_update_time),
-    panelIcon: "",
-    panelColor: params.panel_color || DEFAULT_PANEL_COLOR,
-    backgroundColor: params.background_color || DEFAULT_BACKGROUND_COLOR,
+    title: sanitizeTemplateValue(env.TITLE) || DEFAULT_TITLE,
     slots,
   };
 }
 
-function parseSlotPayload(payload) {
-  if (!payload) return [];
-
-  return payload
-    .split(SLOT_SEPARATOR)
-    .map((entry) => {
-      const [name = "", url = "", resetDay = ""] = entry.split(FIELD_SEPARATOR);
-      return {
-        name: sanitizeTemplateValue(name),
-        url: sanitizeTemplateValue(url),
-        resetDay: sanitizeTemplateValue(resetDay),
-      };
-    })
-    .filter((slot) => slot.name || slot.url || slot.resetDay);
-}
-
-function parseKeyValueArgument(argument) {
-  const result = {};
-  const matcher = /(?:^|&)([^=&]+)=([^&]*)/g;
-  let match;
-
-  while ((match = matcher.exec(argument))) {
-    result[match[1]] = safeDecode(match[2]);
-  }
-
-  return result;
-}
-
-function safeDecode(value) {
-  if (typeof value !== "string") return "";
-  try {
-    return decodeURIComponent(value);
-  } catch (error) {
-    return value;
-  }
-}
-
-function sanitizeTemplateValue(value) {
-  const decoded = safeDecode(value).trim();
-  if (/^\{\{\{[^}]+\}\}\}$/.test(decoded)) return "";
-  if (/^机场\d+$/i.test(decoded)) return "";
-  if (/^订阅链接\d+$/i.test(decoded)) return "";
-  if (/^重置日\d+$/i.test(decoded)) return "";
-  return decoded;
-}
-
-function normalizePanelTitle(value) {
-  if (typeof value !== "string") return "";
-  return safeDecode(value).trim();
-}
-
-function isOnValue(value) {
-  return String(value || "").trim().toLowerCase() === "on";
-}
-
-function buildPanelTitle(context) {
-  const parts = [];
-  if (context.panelTitle) parts.push(context.panelTitle);
-  if (!context.hideUpdateTime) parts.push(formatClock(new Date()));
-  return parts.join(" | ");
-}
-
-function normalizeShiftedSlots(slots) {
-  for (let index = 0; index < slots.length - 1; index += 1) {
-    const current = slots[index];
-    const next = slots[index + 1];
-
-    if (!current || !next) continue;
-    if (!current.resetDay || normalizeResetDay(current.resetDay)) continue;
-    if (!isLikelyUrl(next.name) || next.url) continue;
-
-    next.url = next.name;
-    next.name = current.resetDay;
-    current.resetDay = "";
-  }
-}
-
-function isLikelyUrl(value) {
-  return /^https?:\/\//i.test(String(value || "").trim());
-}
-
-async function buildPanelSection(slot) {
+async function loadSubscription(ctx, slot) {
   const name = slot.name || inferNameFromUrl(slot.url);
   const resetDay = normalizeResetDay(slot.resetDay);
-  const [error, info] = await fetchSubscriptionInfo(slot.url)
-    .then((data) => [null, data])
-    .catch((err) => [err, null]);
 
-  if (error || !info) {
+  try {
+    const info = await fetchSubscriptionInfo(ctx, slot.url);
+    const used = Number(info.upload || 0) + Number(info.download || 0);
+    const total = Number(info.total || 0);
+    const ratio = total > 0 ? clamp(used / total, 0, 1) : 0;
+
     return {
+      ok: true,
       name,
-      error: `获取失败：${String(error || "subscription-userinfo missing")}`,
+      used,
+      total,
+      usedText: bytesToSize(used),
+      totalText: bytesToSize(total),
+      ratio,
+      percentText: `${(ratio * 100).toFixed(1)}%`,
+      expireText: info.expire ? formatDate(info.expire) : "",
+      resetText: resetDay ? `${getRemainingDays(resetDay)} 天` : "",
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      name,
+      errorText: String(error || "获取失败"),
     };
   }
-
-  const used = Number(info.upload || 0) + Number(info.download || 0);
-  const total = Number(info.total || 0);
-  const ratio = total > 0 ? clamp(used / total, 0, 1) : 0;
-  return {
-    name,
-    usedText: bytesToSize(used),
-    totalText: bytesToSize(total),
-    percentText: `${(ratio * 100).toFixed(1)}%`,
-    progressBar: buildProgressBar(ratio),
-    expireText: info.expire ? formatDate(info.expire) : "",
-    resetText: resetDay ? `${getRemainingDays(resetDay)} 天` : "",
-  };
 }
 
-async function fetchSubscriptionInfo(url) {
+async function fetchSubscriptionInfo(ctx, url) {
   const attempts = buildRequestAttempts(url);
   const errors = [];
 
   for (const attempt of attempts) {
     try {
-      const userInfo = await requestUserInfo(attempt);
-      if (userInfo) return parseSubscriptionUserInfo(userInfo);
+      const response = await ctx.http[attempt.method](attempt.url, {
+        headers: attempt.headers,
+        timeout: 12000,
+      });
+
+      if (response.status < 200 || response.status >= 400) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const headerValue = response.headers.get("subscription-userinfo");
+      if (!headerValue) {
+        throw new Error("subscription-userinfo missing");
+      }
+
+      return parseSubscriptionUserInfo(headerValue);
     } catch (error) {
-      errors.push(`[${attempt.method.toUpperCase()}] ${attempt.url} -> ${error}`);
+      errors.push(`[${attempt.method.toUpperCase()}] ${attempt.url} -> ${String(error)}`);
     }
   }
 
@@ -303,6 +157,7 @@ function buildRequestAttempts(url) {
 function buildUrlVariants(url) {
   const variants = [];
   const seen = {};
+
   const append = (candidate) => {
     if (!candidate || seen[candidate]) return;
     seen[candidate] = true;
@@ -320,53 +175,9 @@ function buildUrlVariants(url) {
 }
 
 function withQueryParam(url, key, value) {
-  if (!url) return url;
   if (!isLikelyUrl(url)) return "";
   if (new RegExp(`([?&])${escapeRegExp(key)}=`).test(url)) return url;
-  return `${url}${url.indexOf("?") === -1 ? "?" : "&"}${key}=${encodeURIComponent(value)}`;
-}
-
-function escapeRegExp(input) {
-  return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function requestUserInfo(request) {
-  return new Promise((resolve, reject) => {
-    const client = $httpClient[request.method];
-    if (typeof client !== "function") {
-      reject(`unsupported method: ${request.method}`);
-      return;
-    }
-
-    client(
-      {
-        url: request.url,
-        headers: request.headers,
-      },
-      (error, response) => {
-        if (error || !response) {
-          reject(error || "empty response");
-          return;
-        }
-
-        if (response.status < 200 || response.status >= 400) {
-          reject(`HTTP ${response.status}`);
-          return;
-        }
-
-        const headerKey = Object.keys(response.headers || {}).find(
-          (key) => key.toLowerCase() === "subscription-userinfo"
-        );
-
-        if (!headerKey || !response.headers[headerKey]) {
-          reject("subscription-userinfo missing");
-          return;
-        }
-
-        resolve(response.headers[headerKey]);
-      }
-    );
-  });
+  return `${url}${url.includes("?") ? "&" : "?"}${key}=${encodeURIComponent(value)}`;
 }
 
 function parseSubscriptionUserInfo(headerValue) {
@@ -379,6 +190,485 @@ function parseSubscriptionUserInfo(headerValue) {
   );
 }
 
+function buildWidget(ctx, config, items) {
+  const family = ctx.widgetFamily || "systemMedium";
+  if (family === "accessoryInline") return buildInlineWidget(config, items);
+  if (family === "accessoryCircular") return buildCircularWidget(config, items);
+  if (family === "accessoryRectangular") return buildRectangularWidget(config, items);
+
+  const displayItems = family === "systemLarge" || family === "systemExtraLarge" ? items.slice(0, 2) : items.slice(0, 1);
+
+  return {
+    type: "widget",
+    padding: 16,
+    gap: 12,
+    backgroundGradient: {
+      colors: ["#F7F8FC", "#ECEFF7"],
+      startPoint: { x: 0, y: 0 },
+      endPoint: { x: 1, y: 1 },
+    },
+    children: [
+      buildHeader(config.title),
+      ...displayItems.map((item) => buildMainCard(item)),
+      items.length > displayItems.length
+        ? {
+            type: "text",
+            text: `还有 ${items.length - displayItems.length} 个订阅未显示`,
+            font: { size: "caption1", weight: "medium" },
+            textColor: "#7C8193",
+            maxLines: 1,
+          }
+        : { type: "spacer", length: 0 },
+    ],
+  };
+}
+
+function buildHeader(title) {
+  return {
+    type: "stack",
+    direction: "row",
+    alignItems: "center",
+    children: [
+      {
+        type: "text",
+        text: title,
+        font: { size: "headline", weight: "semibold" },
+        textColor: "#151821",
+        maxLines: 1,
+        minScale: 0.7,
+      },
+      { type: "spacer" },
+      {
+        type: "date",
+        date: new Date().toISOString(),
+        format: "time",
+        font: { size: "caption1", weight: "semibold" },
+        textColor: "#7C8193",
+      },
+    ],
+  };
+}
+
+function buildMainCard(item) {
+  if (!item.ok) {
+    return {
+      type: "stack",
+      direction: "column",
+      gap: 8,
+      padding: 16,
+      backgroundColor: "#FFFFFF",
+      borderRadius: 22,
+      shadowColor: "#ABB3C733",
+      shadowRadius: 10,
+      shadowOffset: { x: 0, y: 4 },
+      children: [
+        {
+          type: "text",
+          text: item.name,
+          font: { size: "headline", weight: "semibold" },
+          textColor: "#151821",
+          maxLines: 1,
+        },
+        {
+          type: "text",
+          text: item.errorText,
+          font: { size: "caption1", weight: "medium" },
+          textColor: "#D04545",
+          maxLines: 3,
+          minScale: 0.7,
+        },
+      ],
+    };
+  }
+
+  const chips = [];
+  if (item.expireText) chips.push(buildChip("到期", item.expireText));
+  if (item.resetText) chips.push(buildChip("重置", item.resetText));
+
+  return {
+    type: "stack",
+    direction: "row",
+    alignItems: "center",
+    gap: 14,
+    padding: 16,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 22,
+    shadowColor: "#ABB3C733",
+    shadowRadius: 10,
+    shadowOffset: { x: 0, y: 4 },
+    children: [
+      {
+        type: "image",
+        src: buildGaugeDataUri(item.percentText, item.ratio),
+        width: 92,
+        height: 92,
+      },
+      {
+        type: "stack",
+        direction: "column",
+        gap: 8,
+        flex: 1,
+        children: [
+          {
+            type: "text",
+            text: item.name,
+            font: { size: "title3", weight: "semibold" },
+            textColor: "#151821",
+            maxLines: 1,
+            minScale: 0.65,
+          },
+          {
+            type: "text",
+            text: `已用 ${item.usedText} / ${item.totalText}`,
+            font: { size: "subheadline", weight: "medium" },
+            textColor: "#5C6272",
+            maxLines: 2,
+            minScale: 0.7,
+          },
+          chips.length
+            ? {
+                type: "stack",
+                direction: "row",
+                gap: 8,
+                children: chips,
+              }
+            : {
+                type: "text",
+                text: `使用率 ${item.percentText}`,
+                font: { size: "caption1", weight: "medium" },
+                textColor: "#7C8193",
+              },
+        ],
+      },
+    ],
+  };
+}
+
+function buildChip(label, value) {
+  return {
+    type: "stack",
+    direction: "column",
+    gap: 2,
+    padding: [8, 10, 8, 10],
+    backgroundColor: "#F2F5FB",
+    borderRadius: 14,
+    children: [
+      {
+        type: "text",
+        text: label,
+        font: { size: "caption2", weight: "medium" },
+        textColor: "#8C92A3",
+        maxLines: 1,
+      },
+      {
+        type: "text",
+        text: value,
+        font: { size: "caption1", weight: "semibold" },
+        textColor: "#20242F",
+        maxLines: 1,
+      },
+    ],
+  };
+}
+
+function buildInlineWidget(config, items) {
+  const item = items[0];
+  if (!item || !item.ok) {
+    return {
+      type: "widget",
+      backgroundColor: "#00000000",
+      children: [
+        {
+          type: "text",
+          text: `${config.title} 获取失败`,
+          font: { size: "caption2", weight: "medium" },
+          textColor: "#FFFFFF",
+        },
+      ],
+    };
+  }
+
+  return {
+    type: "widget",
+    backgroundColor: "#00000000",
+    children: [
+      {
+        type: "text",
+        text: `${item.name} ${item.percentText}`,
+        font: { size: "caption1", weight: "semibold" },
+        textColor: "#FFFFFF",
+        maxLines: 1,
+      },
+    ],
+  };
+}
+
+function buildCircularWidget(config, items) {
+  const item = items[0];
+  if (!item || !item.ok) {
+    return {
+      type: "widget",
+      backgroundColor: "#151821",
+      padding: 10,
+      children: [
+        {
+          type: "text",
+          text: "ERR",
+          font: { size: "caption1", weight: "bold" },
+          textColor: "#FFFFFF",
+        },
+      ],
+    };
+  }
+
+  return {
+    type: "widget",
+    padding: 8,
+    backgroundColor: "#151821",
+    children: [
+      {
+        type: "image",
+        src: buildGaugeDataUri(item.percentText, item.ratio, {
+          background: "#232734",
+          foreground: gaugeColor(item.ratio),
+          textColor: "#FFFFFF",
+          subTextColor: "#B3B9C8",
+          size: 180,
+          stroke: 16,
+          fontSize: 34,
+          subFontSize: 14,
+        }),
+        width: 58,
+        height: 58,
+      },
+    ],
+  };
+}
+
+function buildRectangularWidget(config, items) {
+  const item = items[0];
+  if (!item || !item.ok) {
+    return {
+      type: "widget",
+      padding: 12,
+      backgroundColor: "#151821",
+      children: [
+        {
+          type: "text",
+          text: `${config.title}\n获取失败`,
+          font: { size: "caption1", weight: "semibold" },
+          textColor: "#FFFFFF",
+        },
+      ],
+    };
+  }
+
+  return {
+    type: "widget",
+    padding: 12,
+    gap: 8,
+    backgroundColor: "#151821",
+    children: [
+      {
+        type: "stack",
+        direction: "row",
+        alignItems: "center",
+        gap: 10,
+        children: [
+          {
+            type: "image",
+            src: buildGaugeDataUri(item.percentText, item.ratio, {
+              background: "#232734",
+              foreground: gaugeColor(item.ratio),
+              textColor: "#FFFFFF",
+              subTextColor: "#B3B9C8",
+              size: 180,
+              stroke: 16,
+              fontSize: 34,
+              subFontSize: 14,
+            }),
+            width: 48,
+            height: 48,
+          },
+          {
+            type: "stack",
+            direction: "column",
+            gap: 2,
+            flex: 1,
+            children: [
+              {
+                type: "text",
+                text: item.name,
+                font: { size: "caption1", weight: "semibold" },
+                textColor: "#FFFFFF",
+                maxLines: 1,
+              },
+              {
+                type: "text",
+                text: `${item.usedText} / ${item.totalText}`,
+                font: { size: "caption2", weight: "medium" },
+                textColor: "#B3B9C8",
+                maxLines: 1,
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function buildEmptyWidget(config) {
+  return {
+    type: "widget",
+    padding: 18,
+    gap: 10,
+    backgroundGradient: {
+      colors: ["#F7F8FC", "#ECEFF7"],
+      startPoint: { x: 0, y: 0 },
+      endPoint: { x: 1, y: 1 },
+    },
+    children: [
+      buildHeader(config.title),
+      {
+        type: "stack",
+        direction: "column",
+        gap: 8,
+        padding: 16,
+        backgroundColor: "#FFFFFF",
+        borderRadius: 22,
+        children: [
+          {
+            type: "text",
+            text: "请先在模块参数中填写订阅链接",
+            font: { size: "headline", weight: "semibold" },
+            textColor: "#151821",
+            maxLines: 2,
+          },
+          {
+            type: "text",
+            text: "支持 10 组机场名称、订阅链接和重置日",
+            font: { size: "subheadline", weight: "medium" },
+            textColor: "#7C8193",
+            maxLines: 2,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function buildGaugeDataUri(percentText, ratio, theme) {
+  const settings = {
+    size: 220,
+    stroke: 18,
+    fontSize: 34,
+    subFontSize: 14,
+    background: "#E7ECF6",
+    foreground: gaugeColor(ratio),
+    textColor: "#1C2230",
+    subTextColor: "#8C92A3",
+    ...theme,
+  };
+
+  const radius = (settings.size - settings.stroke) / 2 - 4;
+  const center = settings.size / 2;
+  const circumference = 2 * Math.PI * radius;
+  const dashOffset = circumference * (1 - clamp(ratio, 0, 1));
+  const svg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="${settings.size}" height="${settings.size}" viewBox="0 0 ${settings.size} ${settings.size}">
+  <circle cx="${center}" cy="${center}" r="${radius}" fill="none" stroke="${settings.background}" stroke-width="${settings.stroke}" />
+  <circle
+    cx="${center}"
+    cy="${center}"
+    r="${radius}"
+    fill="none"
+    stroke="${settings.foreground}"
+    stroke-width="${settings.stroke}"
+    stroke-linecap="round"
+    stroke-dasharray="${circumference}"
+    stroke-dashoffset="${dashOffset}"
+    transform="rotate(-90 ${center} ${center})"
+  />
+  <text x="50%" y="49%" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="${settings.fontSize}" font-weight="700" fill="${settings.textColor}">${percentText}</text>
+  <text x="50%" y="63%" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="${settings.subFontSize}" font-weight="600" letter-spacing="2" fill="${settings.subTextColor}">USED</text>
+</svg>`.trim();
+
+  return `data:image/svg+xml;base64,${base64Encode(svg)}`;
+}
+
+function gaugeColor(ratio) {
+  if (ratio >= 0.9) return "#F05C4E";
+  if (ratio >= 0.75) return "#F6A63A";
+  return "#6B8CFF";
+}
+
+function base64Encode(input) {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const bytes = utf8Encode(input);
+  let output = "";
+
+  for (let i = 0; i < bytes.length; i += 3) {
+    const a = bytes[i];
+    const b = i + 1 < bytes.length ? bytes[i + 1] : 0;
+    const c = i + 2 < bytes.length ? bytes[i + 2] : 0;
+    const triple = (a << 16) | (b << 8) | c;
+
+    output += chars[(triple >> 18) & 63];
+    output += chars[(triple >> 12) & 63];
+    output += i + 1 < bytes.length ? chars[(triple >> 6) & 63] : "=";
+    output += i + 2 < bytes.length ? chars[triple & 63] : "=";
+  }
+
+  return output;
+}
+
+function utf8Encode(input) {
+  const bytes = [];
+  for (const char of input) {
+    const code = char.codePointAt(0);
+    if (code <= 0x7f) {
+      bytes.push(code);
+    } else if (code <= 0x7ff) {
+      bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f));
+    } else if (code <= 0xffff) {
+      bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
+    } else {
+      bytes.push(
+        0xf0 | (code >> 18),
+        0x80 | ((code >> 12) & 0x3f),
+        0x80 | ((code >> 6) & 0x3f),
+        0x80 | (code & 0x3f)
+      );
+    }
+  }
+  return bytes;
+}
+
+function sanitizeTemplateValue(value) {
+  const text = String(value || "").trim();
+  if (/^\{\{\{[^}]+\}\}\}$/.test(text)) return "";
+  if (/^机场\d+$/i.test(text)) return "";
+  if (/^订阅链接\d+$/i.test(text)) return "";
+  if (/^可选$/i.test(text)) return "";
+  return text;
+}
+
+function normalizeShiftedSlots(slots) {
+  for (let index = 0; index < slots.length - 1; index += 1) {
+    const current = slots[index];
+    const next = slots[index + 1];
+
+    if (!current || !next) continue;
+    if (!current.resetDay || normalizeResetDay(current.resetDay)) continue;
+    if (!isLikelyUrl(next.name) || next.url) continue;
+
+    next.url = next.name;
+    next.name = current.resetDay;
+    current.resetDay = "";
+  }
+}
+
 function normalizeResetDay(value) {
   const resetDay = parseInt(value, 10);
   return Number.isFinite(resetDay) && resetDay > 0 && resetDay <= 31 ? resetDay : null;
@@ -387,6 +677,14 @@ function normalizeResetDay(value) {
 function inferNameFromUrl(url) {
   const matched = String(url).match(/^https?:\/\/([^\/?#]+)/i);
   return matched ? matched[1] : "未命名订阅";
+}
+
+function isLikelyUrl(value) {
+  return /^https?:\/\//i.test(String(value || "").trim());
+}
+
+function escapeRegExp(input) {
+  return String(input).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function getRemainingDays(resetDay) {
@@ -408,12 +706,6 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
-function buildProgressBar(ratio) {
-  const total = 10;
-  const filled = Math.max(0, Math.min(total, Math.round(ratio * total)));
-  return `${"●".repeat(filled)}${"○".repeat(total - filled)}`;
-}
-
 function bytesToSize(bytes) {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB", "PB"];
@@ -428,41 +720,4 @@ function formatDate(expireValue) {
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
   const day = `${date.getDate()}`.padStart(2, "0");
   return `${year}-${month}-${day}`;
-}
-
-function formatClock(date) {
-  const hours = `${date.getHours()}`.padStart(2, "0");
-  const minutes = `${date.getMinutes()}`.padStart(2, "0");
-  return `${hours}:${minutes}`;
-}
-
-function buildPanelContent(items) {
-  if (!items.length) return "暂无可显示内容";
-
-  const primary = items[0];
-  const extraCount = Math.max(0, items.length - 1);
-
-  if (primary.error) {
-    return [
-      `主订阅  ${primary.name}`,
-      primary.error,
-      extraCount > 0 ? `另有 ${extraCount} 个订阅未展示` : "",
-    ]
-      .filter(Boolean)
-      .join("\n");
-  }
-
-  const meta = [];
-  if (primary.expireText) meta.push(`到期 ${primary.expireText}`);
-  if (primary.resetText) meta.push(`重置 ${primary.resetText}`);
-
-  return [
-    `${primary.name}    ${primary.percentText}`,
-    primary.progressBar,
-    `已用 ${primary.usedText} / ${primary.totalText}`,
-    meta.join("  ·  "),
-    extraCount > 0 ? `另有 ${extraCount} 个订阅，可在编辑页切换查看` : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
 }
