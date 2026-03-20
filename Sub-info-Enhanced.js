@@ -208,7 +208,7 @@ function buildWidget(ctx, config, items) {
     },
     children: [
       buildHeader(config.title),
-      buildListCard(items),
+      ...items.map((item) => buildCompactRow(item)),
     ],
   };
 }
@@ -355,15 +355,6 @@ function buildMainCard(item) {
   };
 }
 
-function buildListCard(items) {
-  return {
-    type: "stack",
-    direction: "column",
-    gap: 10,
-    children: items.map((item) => buildCompactRow(item)),
-  };
-}
-
 function buildCompactRow(item) {
   if (!item.ok) {
     return {
@@ -377,6 +368,8 @@ function buildCompactRow(item) {
       shadowColor: "#ABB3C733",
       shadowRadius: 10,
       shadowOffset: { x: 0, y: 4 },
+      borderWidth: 1,
+      borderColor: "#EEF1F7",
       children: [
         buildMiniPercent("ERR", "#D04545"),
         {
@@ -422,6 +415,8 @@ function buildCompactRow(item) {
     shadowColor: "#ABB3C733",
     shadowRadius: 10,
     shadowOffset: { x: 0, y: 4 },
+    borderWidth: 1,
+    borderColor: "#EEF1F7",
     children: [
       buildMiniPercent(item.percentText, gaugeColor(item.ratio)),
       {
